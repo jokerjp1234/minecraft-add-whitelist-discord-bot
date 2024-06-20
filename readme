@@ -1,0 +1,11 @@
+minecraftのwhilistをdiscordで追加、削除できるボットです。
+DISCORD BOT設定の際にはDeveloper Portal＜BOT＜MESSAGE CONTENT INTENTを有効にすることを忘れないでください。
+
+コマンドは!command listで一覧が確認できます。
+!whitelist add 〇〇
+!whitelist remove 〇〇
+〇〇部分はユーザー名を入力することで設定できます。
+
+使用する前には必ず、server.properties内から
+enable-rcon、white-listをtrueに変更し、
+rcon.passwordでパスワード設定を忘れないでください。
