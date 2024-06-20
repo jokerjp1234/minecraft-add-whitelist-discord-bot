@@ -1,0 +1,70 @@
+import discord
+from discord.ext import commands
+from mcrcon import MCRcon
+
+# Discord BOTのトークン
+DISCORD_BOT_TOKEN = 'YOUR_DISCORD_BOT_TOKEN'
+# RCON接続情報
+RCON_HOST = 'YOUR_MINECRAFT_SERVER_IP'
+RCON_PORT = 25575
+RCON_PASSWORD = 'YOUR_RCON_PASSWORD'
+
+# 特定のチャンネルID
+TARGET_CHANNEL_ID = *******
+
+# Intentsの設定
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f'Bot is ready. Logged in as {bot.user}')
+
+@bot.command()
+async def whitelist(ctx, action: str, username: str):
+    # コマンドが特定のチャンネルで実行されているか確認
+    if ctx.channel.id != TARGET_CHANNEL_ID:
+        return
+
+    # コマンドが正しいか確認
+    if action not in ['add', 'remove']:
+        await ctx.send('あれれ？コマンドが違うよ　よくコマンドを確認してみて')
+        return
+    
+    try:
+        with MCRcon(RCON_HOST, RCON_PASSWORD, RCON_PORT) as mcr:
+            if action == 'add':
+                response = mcr.command(f'whitelist add {username}')
+                if "added" in response:  # 追加成功メッセージが含まれているか確認
+                    await ctx.send('追加完了')
+                else:
+                    await ctx.send(f'追加できませんでした　理由：{response}')
+            else:
+                response = mcr.command(f'whitelist remove {username}')
+                if "removed" in response:  # 削除成功メッセージが含まれているか確認
+                    await ctx.send('削除完了')
+                else:
+                    await ctx.send(f'削除できませんでした　理由：{response}')
+    except Exception as e:
+        await ctx.send(f'追加できませんでした　理由：{str(e)}')
+
+@bot.command()
+async def command(ctx, action: str):
+    # コマンドが特定のチャンネルで実行されているか確認
+    if ctx.channel.id != TARGET_CHANNEL_ID:
+        return
+
+    if action == 'list':
+        command_list = """
+        **コマンドリストと役割の解説**
+        - `!whitelist add <username>`: ユーザーをホワイトリストに追加します。
+        - `!whitelist remove <username>`: ユーザーをホワイトリストから削除します。
+        - `!command list`: このコマンドリストを表示します。
+        """
+        await ctx.send(command_list)
+    else:
+        await ctx.send('あれれ？コマンドが違うよ　よくコマンドを確認してみて')
+
+bot.run(DISCORD_BOT_TOKEN)
