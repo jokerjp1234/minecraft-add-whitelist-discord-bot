@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from mcrcon import MCRcon
+import asyncio
 
 # Discord BOTのトークン
 DISCORD_BOT_TOKEN = 'YOUR_DISCORD_BOT_TOKEN'
@@ -8,63 +9,110 @@ DISCORD_BOT_TOKEN = 'YOUR_DISCORD_BOT_TOKEN'
 RCON_HOST = 'YOUR_MINECRAFT_SERVER_IP'
 RCON_PORT = 25575
 RCON_PASSWORD = 'YOUR_RCON_PASSWORD'
+CHECK_INTERVAL = 30  # プレイヤー数チェック間隔（秒）
 
-# 特定のチャンネルID
+# コマンド送信するチャンネルID
 TARGET_CHANNEL_ID = *******
 
 # Intentsの設定
-intents = discord.Intents.default()
-intents.message_content = True
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", help_command=None, intents=intents)
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+async def get_player_count():
+    try:
+        with MCRcon(RCON_HOST, RCON_PASSWORD, port=RCON_PORT) as mcr:
+            response = mcr.command("list")
+            player_count = parse_player_count(response)
+            return player_count
+    except Exception as e:
+        print(f'Error fetching player count: {e}')
+        return None
 
-@bot.event
-async def on_ready():
-    print(f'Bot is ready. Logged in as {bot.user}')
+def parse_player_count(response):
+    # マインクラフトの"list"コマンドのレスポンスからプレイヤー数を抽出する
+    # 例: "There are 1 of a max of 20 players online: player1"
+    if "There are" in response:
+        count = response.split(" ")[2]
+        return count
+    return "0"
 
+async def update_status():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        player_count = await get_player_count()
+        if player_count is not None:
+            activity = discord.Game(name=f'{player_count}人がマイクラ')
+            await bot.change_presence(activity=activity)
+        await asyncio.sleep(CHECK_INTERVAL)
+
+# コマンドのコード
 @bot.command()
 async def whitelist(ctx, action: str, username: str):
     # コマンドが特定のチャンネルで実行されているか確認
-    if ctx.channel.id != TARGET_CHANNEL_ID:
+    if ctx.channel.id != DISCORD_CHANNEL_ID:
         return
 
     # コマンドが正しいか確認
     if action not in ['add', 'remove']:
-        await ctx.send('あれれ？コマンドが違うよ　よくコマンドを確認してみて')
+        await ctx.send('あれれ？コマンドが違うよ !command listで確認してみて')
         return
     
     try:
-        with MCRcon(RCON_HOST, RCON_PASSWORD, RCON_PORT) as mcr:
+        with MCRcon(RCON_HOST, RCON_PASSWORD, port=RCON_PORT) as mcr:
             if action == 'add':
                 response = mcr.command(f'whitelist add {username}')
                 if "added" in response:  # 追加成功メッセージが含まれているか確認
                     await ctx.send('追加完了')
                 else:
-                    await ctx.send(f'追加できませんでした　理由：{response}')
+                    await ctx.send(f'追加できませんでした 理由：{response}')
             else:
                 response = mcr.command(f'whitelist remove {username}')
                 if "removed" in response:  # 削除成功メッセージが含まれているか確認
                     await ctx.send('削除完了')
                 else:
-                    await ctx.send(f'削除できませんでした　理由：{response}')
+                    await ctx.send(f'削除できませんでした 理由：{response}')
     except Exception as e:
-        await ctx.send(f'追加できませんでした　理由：{str(e)}')
+        await ctx.send(f'追加できませんでした 理由：{str(e)}')
 
 @bot.command()
-async def command(ctx, action: str):
+async def command(ctx, action: str = None):
     # コマンドが特定のチャンネルで実行されているか確認
-    if ctx.channel.id != TARGET_CHANNEL_ID:
+    if ctx.channel.id != DISCORD_CHANNEL_ID:
         return
 
     if action == 'list':
         command_list = """
-        **コマンドリストと役割の解説**
-        - `!whitelist add <username>`: ユーザーをホワイトリストに追加します。
-        - `!whitelist remove <username>`: ユーザーをホワイトリストから削除します。
-        - `!command list`: このコマンドリストを表示します。
+**コマンド一覧:**
+- `!whitelist add <player名>`: 指定したプレイヤーをホワイトリストに追加します。
+- `!whitelist remove <player名>`: 指定したプレイヤーをホワイトリストから削除します。
+- `!command list`: コマンド一覧を表示します。
         """
         await ctx.send(command_list)
     else:
-        await ctx.send('あれれ？コマンドが違うよ　よくコマンドを確認してみて')
+        await ctx.send('あれれ？コマンドが違うよ !command listで確認してみて')
 
-bot.run(DISCORD_BOT_TOKEN)
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send('あれれ？コマンドが違うよ !command listで確認してみて')
+
+async def run_rcon_command(command):
+    try:
+        with MCRcon(RCON_HOST, RCON_PASSWORD, port=RCON_PORT) as mcr:
+            response = mcr.command(command)
+            return response
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@bot.event
+async def on_ready():
+    print("Botは正常に起動しました！")
+    print(bot.user.name)  # Botの名前
+    print(bot.user.id)  # ID
+    print(discord.__version__)  # discord.pyのバージョン
+    print('------')
+    await update_status()
+
+# メイン関数の実行
+if __name__ == "__main__":
+    bot.run(DISCORD_BOT_TOKEN)
